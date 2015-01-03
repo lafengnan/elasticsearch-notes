@@ -1,7 +1,7 @@
 ES模块
 =======
 
-# HTTP Server模块
+## HTTP Server模块
 ___
 
 HTTP模块定义在org.elasticsearch.http目录中。Guice模块定义在HttpServerModule.java文件中，定义如下：
@@ -64,7 +64,7 @@ public class HttpServerModule extends AbstractModule {
         serverBootstrap.setPipelineFactory(configureServerChannelPipelineFactory());
 ```
 
-# Rest模块
+## Rest模块
 ____
 
 Rest模块用于接收REST API请求并将其分发到相应的Handler处理。Guice模块文件定义在org.elasticsearch.rest目录中。根据RestModule.java定义：  
