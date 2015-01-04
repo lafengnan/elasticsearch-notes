@@ -81,7 +81,7 @@ InternalNode.start()方法首先轮询所有安装的plugin实例并启动，然
         injector.getInstance(ResourceWatcherService.class).start();
         injector.getInstance(TribeService.class).start();
 ```
-关于HTTP Server是否启动需要根据用户的配置文件是否设置*http.enabled*参数为真来确定。该参数默认为真，如果用户将某个Node设置为Data Node并将该参数设置为False则可以让Data Node使用**Transport**模块提供的服务进行内部通信。参考该链接 [modules-node](http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/modules-node.html#modules-node)
+关于HTTP Server是否启动需要根据用户的配置文件是否设置*http.enabled*参数为真来确定。该参数默认为真，如果用户将某个Node设置为Data Node并将该参数设置为False则可以让Data Node使用**Transport**模块提供的服务进行内部通信。详细信息参考该链接 [modules-node](http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/modules-node.html#modules-node)
 
 ## HTTP Server模块
 ___
