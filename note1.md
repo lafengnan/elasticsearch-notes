@@ -1,8 +1,8 @@
 ES模块
 =======
-## ES启动模块Bootstrap
+## Bootstrap
 ___
-Elasticsearch的启动模块定义在org.elasticsearch.bootstrap目录中。启动顺序如下：  
+Elasticsearch启动模块定义在org.elasticsearch.bootstrap目录中。启动顺序如下：  
 
 main() -> init settings() -> bootstrap.setup() -> bootstrap.start() -> keepalive thread start()  
 其中bootstrap.start()调用node.start()启动node service。node service接口在org.elasticsearc.node.internal中的NodeModule.java文件中被bind到InternalNode()类。因此，node.start()实际调用的是InternalNode.start()方法。  
