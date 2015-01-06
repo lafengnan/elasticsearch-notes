@@ -192,11 +192,11 @@ public class HttpServerModule extends AbstractModule {
     }
 ```  
 在该方法中调用serverTransport.dispatchRequest()方法，将请求分发到相应的Handler处理。该方法的调用链如下：    
-1. NettyHttpServerTransport.dispatchRequest ->
-2. HttpServerAdapter.dispatchRequest() -> 
-3. HttpServer.Dispatcher.dispatchRequest() -> 
-4. HttpServer.internalDispatchRequest() -> 
-5. RestController.dispatchRequest(request, chanel)
+1. NettyHttpServerTransport.dispatchRequest ->  
+2. HttpServerAdapter.dispatchRequest() ->   
+3. HttpServer.Dispatcher.dispatchRequest() ->   
+4. HttpServer.internalDispatchRequest() ->   
+5. RestController.dispatchRequest(request, chanel)  
 经过上述调用链的处理，一个HTTP请求被发送到RestController等待分发处理。
 
 ## Rest模块
