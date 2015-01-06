@@ -1,12 +1,24 @@
-ES模块
+Elasticsearch请求处理流程
 =======
 ## Bootstrap
 ___
 Elasticsearch启动模块定义在org.elasticsearch.bootstrap目录中。启动顺序如下：  
 
 main() -> init settings() -> bootstrap.setup() -> bootstrap.start() -> keepalive thread start()  
-其中bootstrap.start()调用node.start()启动node service。node service接口在org.elasticsearc.node.internal中的NodeModule.java文件中被bind到InternalNode()类。因此，node.start()实际调用的是InternalNode.start()方法。  
-InternalNode初始化时将所需的Module全都加载到Guice的ModuleBuilder中。  
+其中bootstrap.start()调用node.start()启动node service。node service接口在org.elasticsearc.node.internal中的NodeModule.java文件中被bind到InternalNode()类。因此node.start()实际调用的是InternalNode.start()方法。在bootstrap.setup()方法中调用NodeBuilder.build()方法初始化Node相关变量。相关代码如下：   
+```java
+NodeBuilder nodeBuilder = NodeBuilder.nodeBuilder().settings(tuple.v1()).loadConfigSettings(false);
+node = nodeBuilder.build();
+if (addShutdownHook) {
+    Runtime.getRuntime().addShutdownHook(new Thread() {
+    @Override
+    public void run() {
+                    node.close();
+                }
+            });
+        }
+```  
+其中nodeBuilder.build()将会初始化InternalNode，InternalNode初始化时将所需的Module全都加载到Guice的ModuleBuilder中。代码如下：    
 ```java
 try {
             ModulesBuilder modules = new ModulesBuilder();
@@ -54,7 +66,7 @@ try {
             }
         }
 ```
-InternalNode.start()方法首先轮询所有安装的plugin实例并启动，然后依次启动以下service：  
+在Node初始化完成后，调用bootstrap.start()启动服务，而bootstrap.start()实际上调用的是Node接口中的start()方法。Node接口被绑定到InternalNode实例对象上，从而真正调用的是InternalNode.start()方法。该方法首先轮询所有已安装的plugin实例并启动，然后依次启动以下service：  
 ```java
  injector.getInstance(MappingUpdatedAction.class).start();
         injector.getInstance(IndicesService.class).start();
@@ -81,14 +93,23 @@ InternalNode.start()方法首先轮询所有安装的plugin实例并启动，然
         injector.getInstance(ResourceWatcherService.class).start();
         injector.getInstance(TribeService.class).start();
 ```
-关于HTTP Server是否启动需要根据用户的配置文件是否设置*http.enabled*参数为真来确定。该参数默认为真，如果用户将某个Node设置为Data Node并将该参数设置为False则可以让Data Node使用**Transport**模块提供的服务进行内部通信。详细信息参考该链接 [modules-node](http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/modules-node.html#modules-node)
+关于HTTP Server是否启动需要根据用户的配置文件是否设置*http.enabled*参数为真来确定。该参数默认为真，如果用户将某个Node设置为Data Node并将该参数设置为False则可以让Data Node使用**Transport**模块提供的服务进行内部通信。详细信息参考该链接 [modules-node](http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/modules-node.html#modules-node).  
+
+HTTPServer启动start()方法，start()方法调用doStart()方法，在其中调用transport.start()启动真正的HTTP Server的doStart()方法，即NettyHttpServerTransport.start()。HTTPServer类的doStart()方法定义如下：  
+```java
+@Override
+    protected void doStart() throws ElasticsearchException {
+        transport.start();
+        if (logger.isInfoEnabled()) {
+            logger.info("{}", transport.boundAddress());
+        }
+        nodeService.putAttribute("http_address", transport.boundAddress().publishAddress().toString());
+    }
+```
 
 ## HTTP Server模块
-___
 
 HTTP模块定义在org.elasticsearch.http目录中。Guice Module定义在HttpServerModule.java文件中，定义如下：
-
-
 ```java  
 public class HttpServerModule extends AbstractModule {
 
@@ -126,8 +147,7 @@ public class HttpServerModule extends AbstractModule {
     }
 ```
 根据Guice绑定规则，如果用户在配置中设置了Http Server类型则使用用户配置的服务器，否则使用默认的NettyHttpServerTransport。  
-
-在NettyHttpServerTransport.java文件中，doStart()方法用于启动ES的web服务器。doStart()根据用户配置中是否设置了*blockingserver*启动不同的soket线程。  
+在NettyHttpServerTransport.java文件中，doStart()方法用于启动ES的Web服务器。doStart()根据用户配置中是否设置了*blockingserver*启动不同的soket线程。  
 ```java
 @Override
     protected void doStart() throws ElasticsearchException {
@@ -146,7 +166,38 @@ public class HttpServerModule extends AbstractModule {
         }
 
         serverBootstrap.setPipelineFactory(configureServerChannelPipelineFactory());
-```
+```  
+当HTTP Server启动之后开始等待请求，当接收到HTTP请求时，ES调用org.elasticsearch.http.netty.HttpRequestHandler.java中的HttpRequestHandler.messageReceived()方法。  
+```java
+@Override
+    public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
+        HttpRequest request;
+        OrderedUpstreamMessageEvent oue = null;
+        if (this.httpPipeliningEnabled && e instanceof OrderedUpstreamMessageEvent) {
+            oue = (OrderedUpstreamMessageEvent) e;
+            request = (HttpRequest) oue.getMessage();
+        } else {
+            request = (HttpRequest) e.getMessage();
+        }
+
+        // the netty HTTP handling always copy over the buffer to its own buffer, either in NioWorker internally
+        // when reading, or using a cumalation buffer
+        NettyHttpRequest httpRequest = new NettyHttpRequest(request, e.getChannel());
+        if (oue != null) {
+            serverTransport.dispatchRequest(httpRequest, new NettyHttpChannel(serverTransport, httpRequest, corsPattern, oue));
+        } else {
+            serverTransport.dispatchRequest(httpRequest, new NettyHttpChannel(serverTransport, httpRequest, corsPattern));
+        }
+        super.messageReceived(ctx, e);
+    }
+```  
+在该方法中调用serverTransport.dispatchRequest()方法，将请求分发到相应的Handler处理。该方法的调用链如下：    
+1. NettyHttpServerTransport.dispatchRequest ->
+2. HttpServerAdapter.dispatchRequest() -> 
+3. HttpServer.Dispatcher.dispatchRequest() -> 
+4. HttpServer.internalDispatchRequest() -> 
+5. RestController.dispatchRequest(request, chanel)
+经过上述调用链的处理，一个HTTP请求被发送到RestController等待分发处理。
 
 ## Rest模块
 ____
@@ -227,3 +278,19 @@ void executeHandler(RestRequest request, RestChannel channel) throws Exception {
         }
     }
 ```
+executeHandler方法首先根据request获取其相应的RestHandler。在getHandler()方法中定义了如下处理器：  
+* getHandler ---> GET
+* postHandler ---> POST
+* putHandler ---> PUT
+* deleteHandler ---> DELETE
+* headHandler ---> HEAD
+* optionsHandler ---> OPTIONS
+此处的RestHandler是一个接口，定义如下：  
+```java
+public interface RestHandler {
+
+    void handleRequest(RestRequest request, RestChannel channel) throws Exception;
+}
+```
+根据RestModule.java的configure()方法可以发现，Rest Module将所有的RestHandler放入一个action list中，该list中的所有handler都会在RestActionMoudule中被绑定，除此之外还将所有Rest处理接口进行bind操作。具体代码参考： org.elasticsearch.rest.action.RestActionModule.java文件。  
+
