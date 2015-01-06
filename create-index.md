@@ -146,3 +146,52 @@ final TransportActionNodeProxy<Request, Response> proxy = actions.get(action);
         });
     }
 ```
+该方法调用TransportService.sendRequest()方法发送请求并注册一个回调函数用于处理响应结果。sendRequest方法定义如下：  
+```java
+public <T extends TransportResponse> void sendRequest(final DiscoveryNode node, final String action, final TransportRequest request,
+                                                          final TransportResponseHandler<T> handler) {
+        sendRequest(node, action, request, TransportRequestOptions.EMPTY, handler);
+    }
+ public <T extends TransportResponse> void sendRequest(final DiscoveryNode node, final String action, final TransportRequest request,
+                                                          final TransportRequestOptions options, TransportResponseHandler<T> handler) {
+        if (node == null) {
+            throw new ElasticsearchIllegalStateException("can't send request to a null node");
+        }
+        final long requestId = newRequestId();
+        TimeoutHandler timeoutHandler = null;
+        try {
+            clientHandlers.put(requestId, new RequestHolder<>(handler, node, action, timeoutHandler));
+            if (started.get() == false) {
+                // if we are not started the exception handling will remove the RequestHolder again and calls the handler to notify the caller.
+                // it will only notify if the toStop code hasn't done the work yet.
+                throw new TransportException("TransportService is closed stopped can't send request");
+            }
+            if (options.timeout() != null) {
+                timeoutHandler = new TimeoutHandler(requestId);
+                timeoutHandler.future = threadPool.schedule(options.timeout(), ThreadPool.Names.GENERIC, timeoutHandler);
+            }
+            transport.sendRequest(node, requestId, action, request, options);
+        } catch (final Throwable e) {
+            // usually happen either because we failed to connect to the node
+            // or because we failed serializing the message
+            final RequestHolder holderToNotify = clientHandlers.remove(requestId);
+            // if the scheduler raise a EsRejectedExecutionException (due to shutdown), we may have a timeout handler, but no future
+            if (timeoutHandler != null) {
+                FutureUtils.cancel(timeoutHandler.future);
+            }
+
+            // If holderToNotify == null then handler has already been taken care of.
+            if (holderToNotify != null) {
+                // callback that an exception happened, but on a different thread since we don't
+                // want handlers to worry about stack overflows
+                final SendRequestTransportException sendRequestException = new SendRequestTransportException(node, action, e);
+                threadPool.executor(ThreadPool.Names.GENERIC).execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        holderToNotify.handler().handleException(sendRequestException);
+                    }
+                });
+            }
+        }
+    }
+```
