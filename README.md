@@ -6,4 +6,4 @@ elasticsearch-notes
 ## Content Table 
 
 ### [ES请求处理流程](https://github.com/lafengnan/elasticsearch-notes/blob/master/request%20sequence.md)  
-### [创建索引](https://github.com/lafengnan/elasticsearch-notes/blob/master/create-index.md)  
+### [创建索引流程](https://github.com/lafengnan/elasticsearch-notes/blob/master/create-index.md)  
