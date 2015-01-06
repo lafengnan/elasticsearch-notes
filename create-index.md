@@ -1,4 +1,4 @@
-# Create Index操作
+# Create Index流程
 
 当一个创建索引的请求被ES接收到之后，该请求经过分发被发送到RestCreateIndexAction.java中的handleRequest方法处理。
 RestCreateIndexAction定义如下：  
