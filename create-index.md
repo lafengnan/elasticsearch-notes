@@ -85,4 +85,64 @@ public <Request extends ActionRequest, Response extends ActionResponse, RequestB
         }, listener);
     }
 ```
+由上述代码流程可以跟踪到create()方法最终调用TransportClientNodesService的execute()方法。该方法定义如下：  
+```java
+public <Response> void execute(NodeListenerCallback<Response> callback, ActionListener<Response> listener) throws ElasticsearchException {
+        ImmutableList<DiscoveryNode> nodes = this.nodes;
+        ensureNodesAreAvailable(nodes);
+        int index = getNodeNumber();
+        RetryListener<Response> retryListener = new RetryListener<>(callback, listener, nodes, index);
+        DiscoveryNode node = nodes.get((index) % nodes.size());
+        try {
+            callback.doWithNode(node, retryListener);
+        } catch (Throwable t) {
+            //this exception can't come from the TransportService as it doesn't throw exception at all
+            listener.onFailure(t);
+        }
+    }
+```
+该方法的逻辑相对简单：  
+1. 首先获取当前cluster中的所有节点并将其存入一个列表，然后验证节点列表是否为空
+2. 获取一个递增的随机数作为节点索引号index
+3. 创建一个RetryListener实例
+4. 从节点列表中根据index % nodes.length获取一个节点  
+5. 调用回调函数，即TransportClientNodesService.NodeListenerCallback.doWithNode()
+6. 在doWithNode()中调用proxy.execute()方法
+关step6， proxy在execute()方法中实例化：  
+```java
+final TransportActionNodeProxy<Request, Response> proxy = actions.get(action);
+```  
+即，最终调用TransportActionNodeProxy的execute()方法。  该方法定义如下：  
+```java
+ public void execute(DiscoveryNode node, final Request request, final ActionListener<Response> listener) {
+        ActionRequestValidationException validationException = request.validate();
+        if (validationException != null) {
+            listener.onFailure(validationException);
+            return;
+        }
+        transportService.sendRequest(node, action.name(), request, transportOptions, new BaseTransportResponseHandler<Response>() {
+            @Override
+            public Response newInstance() {
+                return action.newResponse();
+            }
 
+            @Override
+            public String executor() {
+                if (request.listenerThreaded()) {
+                    return ThreadPool.Names.LISTENER;
+                }
+                return ThreadPool.Names.SAME;
+            }
+
+            @Override
+            public void handleResponse(Response response) {
+                listener.onResponse(response);
+            }
+
+            @Override
+            public void handleException(TransportException exp) {
+                listener.onFailure(exp);
+            }
+        });
+    }
+```
