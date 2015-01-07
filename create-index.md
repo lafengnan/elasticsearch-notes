@@ -102,12 +102,12 @@ public <Response> void execute(NodeListenerCallback<Response> callback, ActionLi
     }
 ```
 该方法的逻辑相对简单：  
-1. 首先获取当前cluster中的所有节点并将其存入一个列表，然后验证节点列表是否为空
-2. 获取一个递增的随机数作为节点索引号index
-3. 创建一个RetryListener实例
-4. 从节点列表中根据index % nodes.length获取一个节点  
-5. 调用回调函数，即TransportClientNodesService.NodeListenerCallback.doWithNode()
-6. 在doWithNode()中调用proxy.execute()方法
+1. 首先获取当前cluster中的所有节点并将其存入一个列表，然后验证节点列表是否为空  
+2. 获取一个递增的随机数作为节点索引号index  
+3. 创建一个RetryListener实例  
+4. 从节点列表中根据index % nodes.length获取一个节点    
+5. 调用回调函数，即TransportClientNodesService.NodeListenerCallback.doWithNode()  
+6. 在doWithNode()中调用proxy.execute()方法  
 关step6， proxy在execute()方法中实例化：  
 ```java
 final TransportActionNodeProxy<Request, Response> proxy = actions.get(action);
